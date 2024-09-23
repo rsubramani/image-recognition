@@ -23,13 +23,15 @@ This project demonstrates how to build a serverless image recognition app using 
 flowchart TD
     A[User] -->|Uploads Image| B[HTML/JS Frontend]
     B -->|Sends HTTP Request| C[API Gateway]
-    C -->|Invokes| D[AWS Lambda - Image Processing]
-    D -->|Fetches Image| E[S3 Bucket - Image Storage]
+    C -->|Uploads Image| E[S3 Bucket - Image Storage]
+    E -->|Triggers| D[AWS Lambda - Image Processing]
     D -->|Analyzes Image| F[AWS Rekognition - Image Analysis]
     F -->|Returns Labels/Objects| D
+    D -->|Stores Results (Optional)| G[DynamoDB (Optional)]
     D -->|Returns Results| C
     C -->|Returns Response| B
-    D -->|Logs Execution| G[CloudWatch - Logs]
+    D -->|Logs Execution| H[CloudWatch - Logs]
+    C -->|Uses AWS WAF to Protect API| W[Web Application Firewall (WAF)]
 ```
 
 ## Setup
