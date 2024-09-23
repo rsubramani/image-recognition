@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  # S3 Bucket for image uploads
+  ImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: image-recognition-app-bucket
+      AccessControl: PublicRead
+
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - rekognition:DetectLabels
+                Resource: "*"
+
+  # Lambda Function for Rekognition
+  ImageRecognitionLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ImageRecognitionFunction
+      Handler: index.lambda_handler
+      Runtime: python3.9
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: lambda-code-bucket
+        S3Key: image-recognition-lambda.zip
+      Timeout: 60
+
+  # API Gateway for Uploads
+  ImageRecognitionApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: ImageRecognitionApi
+
+  ImageUploadResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ImageRecognitionApi.RootResourceId
+      PathPart: upload
+      RestApiId: !Ref ImageRecognitionApi
+
+  LambdaIntegration:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ImageRecognitionApi
+      ResourceId: !Ref ImageUploadResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ImageRecognitionLambda.Arn}/invocations
+
+  # Lambda Trigger for S3 Upload
+  S3BucketNotification:
+    Type: AWS::S3::BucketNotification
+    Properties:
+      Bucket: !Ref ImageBucket
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt ImageRecognitionLambda.Arn
+
+  # CloudWatch Logs
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ImageRecognitionLambda}"
+      RetentionInDays: 14

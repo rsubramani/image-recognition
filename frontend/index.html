@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Recognition App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        #image-preview {
+            max-width: 100%;
+            display: block;
+            margin: 0 auto;
+        }
+        #upload-result {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image Recognition App</h1>
+    <input type="file" id="imageInput" accept="image/*">
+    <button id="uploadButton" onclick="uploadImage()">Upload Image</button>
+    <div id="imagePreviewContainer">
+        <h3>Image Preview:</h3>
+        <img id="image-preview" alt="Image preview will appear here">
+    </div>
+    <div id="upload-result"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
