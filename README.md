@@ -91,7 +91,7 @@ Once the CloudFormation stack is deployed, you will have:
 3. API Gateway: Exposes an API for uploading images and getting analysis results.
 4. Monitoring: Use AWS CloudWatch to track Lambda function executions and any potential errors.
 
-### Optional Enhancements
+## Optional Enhancements
 1. User Authentication with AWS Cognito
 - Implement user sign-up and sign-in to secure the app further.
 - Manage user permissions and access control.
@@ -128,13 +128,13 @@ Once the CloudFormation stack is deployed, you will have:
 - Analyze metadata stored in DynamoDB for insights.
 - Integrate with AWS QuickSight for visualization.
 
-#### Multi-Region Deployment
+### Multi-Region Deployment
 1. **CloudFormation Stack per Region**: Deploy the same CloudFormation stack in multiple regions (e.g., us-west-2, us-east-1) to replicate the infrastructure across regions.
 2. **Global S3 Buckets**: Use S3 Cross-Region Replication to sync images between buckets in different regions.
 3. **Route 53**: Set up AWS Route 53 with Latency-Based Routing or Geolocation Routing to direct users to the nearest regional deployment for lower latency and failover.
 4. **DynamoDB Global Tables**: Use DynamoDB Global Tables to automatically replicate image metadata across regions for consistent data access.
 
-#### Canary Deployment
+### Canary Deployment
 1. **Lambda Aliases**: Use Lambda Aliases with weighted traffic routing to implement a canary deployment. Create two versions of the Lambda function (new and old).
 2. **Step-by-Step Traffic Shifting**: Shift a small percentage of traffic to the new version using the alias (e.g., 10% to the new version, 90% to the stable version). Monitor for issues.
 3. **Gradual Rollout**: If no issues arise, gradually increase traffic to the new version (e.g., 50%-50%, then 100% to the new version).
