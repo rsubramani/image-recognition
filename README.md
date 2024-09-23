@@ -27,7 +27,7 @@ flowchart TD
     E -->|Triggers| D[AWS Lambda - Image Processing]
     D -->|Analyzes Image| F[AWS Rekognition - Image Analysis]
     F -->|Returns Labels/Objects| D
-    D -->|Stores Results (Optional)| G[DynamoDB (Optional)]
+    D -->|Stores Results| G[DynamoDB (Optional)]
     D -->|Returns Results| C
     C -->|Returns Response| B
     D -->|Logs Execution| H[CloudWatch - Logs]
