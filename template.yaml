@@ -1,13 +1,55 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Description: Serverless Image Recognition App with Enhanced Security
+
 Resources:
-  # S3 Bucket for image uploads
+  # S3 Bucket for Image Storage
   ImageBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: image-recognition-app-bucket
-      AccessControl: PublicRead
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt ImageProcessingLambda.Arn
 
-  # Lambda Execution Role
+  # S3 Bucket Policy to Allow Only API Gateway and Lambda
+  ImageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ImageBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAPIGatewayPutObject
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: s3:PutObject
+            Resource: !Sub '${ImageBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayRestApi}/*'
+
+  # DynamoDB Table for Metadata Storage
+  ImageMetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ImageMetadata
+      AttributeDefinitions:
+        - AttributeName: ImageKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ImageKey
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # Lambda Execution Role with Additional Permissions
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -21,16 +63,16 @@ Resources:
       Policies:
         - PolicyName: LambdaExecutionPolicy
           PolicyDocument:
-            Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
                   - s3:GetObject
                   - rekognition:DetectLabels
+                  - dynamodb:PutItem
                 Resource: "*"
 
-  # Lambda Function for Rekognition
-  ImageRecognitionLambda:
+  # AWS Lambda Function
+  ImageProcessingLambda:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: ImageRecognitionFunction
@@ -42,44 +84,115 @@ Resources:
         S3Key: image-recognition-lambda.zip
       Timeout: 60
 
-  # API Gateway for Uploads
-  ImageRecognitionApi:
+
+  # API Gateway REST API
+  ApiGatewayRestApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: ImageRecognitionApi
 
-  ImageUploadResource:
+  # API Gateway Resource and Method for Image Upload
+  ApiGatewayResource:
     Type: AWS::ApiGateway::Resource
     Properties:
-      ParentId: !GetAtt ImageRecognitionApi.RootResourceId
+      ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
       PathPart: upload
-      RestApiId: !Ref ImageRecognitionApi
+      RestApiId: !Ref ApiGatewayRestApi
 
-  LambdaIntegration:
+  ApiGatewayMethod:
     Type: AWS::ApiGateway::Method
     Properties:
-      RestApiId: !Ref ImageRecognitionApi
-      ResourceId: !Ref ImageUploadResource
+      RestApiId: !Ref ApiGatewayRestApi
+      ResourceId: !Ref ApiGatewayResource
       HttpMethod: POST
       AuthorizationType: NONE
+      ApiKeyRequired: true
       Integration:
-        IntegrationHttpMethod: POST
-        Type: AWS_PROXY
-        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ImageRecognitionLambda.Arn}/invocations
+        Type: AWS
+        IntegrationHttpMethod: PUT
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:s3:path/${ImageBucket}/uploads/{object}'
+        Credentials: !GetAtt ApiGatewayS3Role.Arn
+      RequestParameters:
+        method.request.path.object: true
+      MethodResponses:
+        - StatusCode: '200'
 
-  # Lambda Trigger for S3 Upload
-  S3BucketNotification:
-    Type: AWS::S3::BucketNotification
+  # API Gateway Deployment and Stage with Throttling
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
     Properties:
-      Bucket: !Ref ImageBucket
-      NotificationConfiguration:
-        LambdaConfigurations:
-          - Event: s3:ObjectCreated:*
-            Function: !GetAtt ImageRecognitionLambda.Arn
+      RestApiId: !Ref ApiGatewayRestApi
+      StageName: prod
+      StageDescription:
+        MethodSettings:
+          - DataTraceEnabled: true
+            HttpMethod: '*'
+            LoggingLevel: INFO
+            ResourcePath: '/*'
+            ThrottlingBurstLimit: 100
+            ThrottlingRateLimit: 50
 
-  # CloudWatch Logs
-  LambdaLogGroup:
-    Type: AWS::Logs::LogGroup
+  # WAF Web ACL to Protect API Gateway
+  WebACL:
+    Type: AWS::WAFv2::WebACL
     Properties:
-      LogGroupName: !Sub "/aws/lambda/${ImageRecognitionLambda}"
-      RetentionInDays: 14
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: WebACL
+      Rules:
+        - Name: AWS-AWSManagedRulesCommonRuleSet
+          Priority: 1
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesCommonRuleSet
+
+  # Associate WAF Web ACL with API Gateway
+  WebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Sub 'arn:aws:apigateway:${AWS::Region}::/restapis/${ApiGatewayRestApi}/stages/prod'
+      WebACLArn: !Ref WebACL
+
+  # API Gateway Usage Plan and API Key
+  ApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: BasicUsagePlan
+      Throttle:
+        BurstLimit: 100
+        RateLimit: 50
+      ApiStages:
+        - ApiId: !Ref ApiGatewayRestApi
+          Stage: prod
+
+  ApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Enabled: true
+      Name: ImageRecognitionApiKey
+      StageKeys:
+        - RestApiId: !Ref ApiGatewayRestApi
+          StageName: prod
+
+  ApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref ApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ApiUsagePlan
+
+Outputs:
+  ApiEndpoint:
+    Description: URL of the API Gateway
+    Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
