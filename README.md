@@ -51,7 +51,7 @@ flowchart TD
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/your-repo/serverless-image-recognition-app.git
+   git clone https://github.com/rsubramani/serverless-image-recognition-app.git
    cd serverless-image-recognition-app
 
 2. **Package and Deploy CloudFormation Stack**
